@@ -46,22 +46,22 @@ class MLSol:
         X_prime, Y_prime = X.copy(), Y.copy()
         self.k = k
         self.num_samples = len(X)
-        self.num_features = self.X.shape[-1]
-        self.num_classes = self.Y.shape[-1]
+        self.num_features = X.shape[-1]
+        self.num_classes = Y.shape[-1]
         self.knn_ = self._knn_majority(X, Y)
-        self.C = self.get_C(all_knn, Y)
-        self.w = self.get_w(C, Y)
+        self.C = self.get_C(Y)
+        self.w = self.get_w(Y)
         self.T = self.InitTypes(Y)
 
         for _ in range(GenNum):
             seed_int, ref_int = self.seed_ref_instance()
-            X_c, Y_c = self.GenerateInstance(seed_int, ref_int, X, Y, T)
+            X_c, Y_c = self.GenerateInstance(seed_int, ref_int, X, Y)
             X_prime = np.vstack((X_prime, X_c))
             Y_prime = np.vstack((Y_prime, Y_c))
 
         return X_prime, Y_prime
 
-    def get_C(self, knn_dic: dict, Y: np.ndarray):
+    def get_C(self, Y: np.ndarray):
         """
         PARAMS
         ==========
@@ -81,7 +81,7 @@ class MLSol:
         """
         C = np.zeros_like(Y)
 
-        for idx, ind in knn_dic.items(): # idx refers to the index of data sample
+        for idx, ind in self.knn_.items(): # idx refers to the index of data sample
             Y_arr = Y[idx, :]
             knn_Y = Y[ind["knn_idx"], :]
             ind_ones = np.argwhere(Y_arr)[:, 0] # return indices of entries which are 1
@@ -89,9 +89,9 @@ class MLSol:
             temp_mat[:, ind_ones] = 1
             C[idx, :] = (knn_Y != temp_mat).sum(axis=0)
         
-        return C
+        return C / self.k
 
-    def get_w(self, C: np.ndarray, Y: np.ndarray):
+    def get_w(self, Y: np.ndarray):
         """
         PARAMS
         ==========
@@ -109,12 +109,13 @@ class MLSol:
         w: 2D numpy array
             shape (n, )
         """
-        C_less_1 = C < 1
-        numerators = C * Y * C_less_1
+        C_less_1 = self.C < 1
+        numerators = self.C * Y * C_less_1
         denominators = numerators.sum(axis=0)
         divide = np.ones_like(numerators)
         divide[:, :] = denominators
-        return (numerators / divide).sum(axis=1)
+        w = (numerators / (divide + 1e-6)).sum(axis=1)
+        return w / w.sum()
 
     def _knn_majority(self, X: np.ndarray, Y: np.ndarray):
         """
@@ -134,6 +135,7 @@ class MLSol:
         result = dict()
         for idx, row in enumerate(X_copy):
             # obtain knn
+            row = np.array([row,] * self.num_samples)
             row -= X
             row = np.linalg.norm(row, ord=2, axis=1)
             ind_ = np.argsort(row)
@@ -193,10 +195,10 @@ class MLSol:
 
     def seed_ref_instance(self):
         seed_int = np.random.choice(list(range(self.num_samples)), 1, p=self.w)[0] 
-        ref_int = self.knn_[seed_integer]["knn_idx"][np.random.randint(self.k, size=1)[0]]
+        ref_int = self.knn_[seed_int]["knn_idx"][np.random.randint(self.k, size=1)[0]]
         return seed_int, ref_int
 
-    def GenerateInstance(self, seed_int: int, ref_int: int, X: np.ndarray, Y: np.ndarray, T: np.ndarray):
+    def GenerateInstance(self, seed_int: int, ref_int: int, X: np.ndarray, Y: np.ndarray):
         """
         PARAMS
         ==========
@@ -226,8 +228,8 @@ class MLSol:
         """
         X_s, Y_s = X[seed_int, :], Y[seed_int, :]
         X_r, Y_r = X[ref_int, :], Y[ref_int, :]
-        X_c = np.random(low=0, high=1, size=self.num_features) * (X_r - X_s)
-        Y_c = np.zeros_like(X_c)
+        X_c = np.random.uniform(low=0, high=1, size=self.num_features) * (X_r - X_s)
+        Y_c = np.zeros(self.num_classes)
         d_s = np.linalg.norm(X_c - X_s, ord=2)
         d_r = np.linalg.norm(X_c - X_r, ord=2)
         cd = d_s / (d_s + d_r)
@@ -236,16 +238,16 @@ class MLSol:
             if Y_s[j] == Y_r[j]:
                 Y_c[j] = Y_s[j]
             else:
-                if T[seed_int, j] == self.minority_class["MJ"]:
+                if self.T[seed_int, j] == self.minority_class["MJ"]:
                     seed_int, ref_int = ref_int, seed_int
                     cd = 1 - cd
                 
                 theta = 0.5
-                if T[seed_int, j] == self.minority_class["BD"]:
+                if self.T[seed_int, j] == self.minority_class["BD"]:
                     theta = 0.75
-                elif T[seed_int, j] == self.minority_class["RR"]:
+                elif self.T[seed_int, j] == self.minority_class["RR"]:
                     theta = 1.00001
-                elif T[seed_int, j] == self.minority_class["RR"]:
+                elif self.T[seed_int, j] == self.minority_class["RR"]:
                     theta = -0.00001
 
                 Y_c[j] = Y_s[j] if cd<=theta else Y_r[j]
