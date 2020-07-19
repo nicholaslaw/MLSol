@@ -1,0 +1,2 @@
+jupyter
+pytest==5.4.3
