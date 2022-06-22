@@ -8,6 +8,6 @@ setup(
    author_email='nicholas_law_91@hotmail.com',
    packages=['MLSol'],  #same as name
    install_requires=[
-       "numpy==1.18.1"
+       "numpy==1.22.0"
    ], #external packages as dependencies
 )
